@@ -1,0 +1,643 @@
+<!DOCTYPE html><html class="dark" lang="id"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Smart Lux Monitor - ESP32 Firebase RTDB</title>
+<!-- Tailwind CSS CDN with Forms & Container Queries -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Chart.js CDN for History Analytics -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Google Fonts: Space Grotesk & JetBrains Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<!-- Tailwind Configuration -->
+<script data-purpose="tailwind-config">
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            iot: {
+              bg: '#070b12',
+              card: '#0c1322',
+              cardBorder: '#1e293b',
+              neonCyan: '#06b6d4',
+              neonAmber: '#f59e0b',
+              glowYellow: '#fbbf24',
+              danger: '#f43f5e'
+            }
+          },
+          fontFamily: {
+            sans: ['Space Grotesk', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+<!-- Custom Styles for Technical IoT Grid and Glow Effects -->
+<style data-purpose="custom-grid-background">
+    body {
+      background-color: #070b12;
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(6, 182, 212, 0.08), transparent 45%),
+        linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 100% 100%, 36px 36px, 36px 36px;
+    }
+  </style>
+<style data-purpose="glowing-accents">
+    .glow-amber-box {
+      box-shadow: 0 0 25px -5px rgba(245, 158, 11, 0.35);
+    }
+    .glow-cyan-box {
+      box-shadow: 0 0 20px -5px rgba(6, 182, 212, 0.25);
+    }
+    .radar-pulse {
+      position: relative;
+    }
+    .radar-pulse::after {
+      content: '';
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      border-radius: 9999px;
+      background-color: inherit;
+      animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+      opacity: 0.75;
+    }
+  </style>
+</head>
+<body class="text-slate-200 font-sans min-h-screen flex flex-col md:flex-row antialiased selection:bg-cyan-500 selection:text-black bg-[#070b12]"><button id="expandSidebarBtn" type="button" title="Show / Tampilkan Sidebar" class="hidden fixed top-3 left-3 z-50 p-2.5 rounded-lg bg-[#0c1322] border-2 border-cyan-500/40 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:bg-cyan-500/10 hover:border-cyan-400 transition-all cursor-pointer items-center gap-2 group"><svg class="w-5 h-5 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path></svg><span class="text-xs font-mono font-bold tracking-wider hidden sm:inline">EXPAND</span></button>
+<!-- BEGIN: NavigationBar -->
+<aside class="w-full md:w-64 lg:w-72 bg-[#0c1322] border-b md:border-b-0 md:border-r border-slate-800 flex flex-col justify-between flex-shrink-0 z-40 transition-all" data-purpose="main-sidebar" id="mainSidebar">
+<div>
+<!-- Sidebar Brand Header -->
+<div class="p-4 border-b border-slate-800/80 flex items-center justify-between gap-3">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500/20 to-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 flex-shrink-0 shadow-[0_0_12px_rgba(6,182,212,0.2)]">
+<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<span class="font-bold text-sm tracking-wide text-white font-sans">LUXMONITOR</span>
+<span class="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">ONLINE</span>
+</div>
+<p class="text-[11px] text-slate-400 font-mono">ESP32 // RTDB Node</p>
+</div>
+</div>
+<button id="collapseSidebarBtn" type="button" title="Collapse / Sembunyikan Sidebar" class="p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-cyan-500/50 hover:bg-slate-800 text-slate-400 hover:text-cyan-400 transition-colors flex items-center justify-center cursor-pointer"><svg id="collapseSidebarIcon" class="w-4 h-4 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path></svg></button></div>
+<!-- Hardware Info Tag -->
+<div class="px-4 py-2 bg-slate-950/50 border-b border-slate-800/60 flex items-center justify-between text-xs font-mono text-slate-400">
+<span class="flex items-center gap-1.5 text-cyan-400 font-medium">
+<span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+        Node-01 Ruang Tamu
+      </span>
+<span class="text-[10px] text-slate-500 uppercase">v2.4-ota</span>
+</div>
+<!-- Nav Menu List -->
+<nav class="p-3 space-y-1 text-xs font-mono">
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.15)] transition-colors" href="#">
+<svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span class="">Dashboard Utama</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-colors" href="#">
+<svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span class="">Riwayat Telemetri</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-colors" href="#">
+<svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span class="">Analisis Pencahayaan</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-colors" href="#">
+<svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span class="">Node Sensor ESP32</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-colors" href="#">
+<svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span class="">Batas Ambien (SNI)</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-colors" href="#">
+<svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+<path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span class="">Pengaturan Sistem</span>
+</a>
+</nav>
+</div>
+<!-- Sidebar Footer: Telemetry Health -->
+<div class="p-3 border-t border-slate-800 bg-slate-950/60 m-3 rounded-lg text-xs font-mono space-y-2">
+<div class="flex items-center justify-between text-[11px]">
+<span class="text-slate-400">ESP32 Hardware:</span>
+<span class="text-emerald-400 font-semibold flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        TERHUBUNG
+      </span>
+</div>
+<div class="flex items-center justify-between text-[11px]">
+<span class="text-slate-400">Latensi RTDB:</span>
+<span class="text-cyan-400 font-semibold">42 ms</span>
+</div>
+<div class="flex items-center justify-between text-[11px]">
+<span class="text-slate-400">Sensor BH1750:</span>
+<span class="text-amber-400 font-semibold">OK (I2C)</span>
+</div>
+</div>
+</aside><header class="border-b border-slate-800 bg-[#0c1322]/90 backdrop-blur-md sticky top-0 z-30 px-4 sm:px-6 py-3 w-full" data-purpose="top-navigation">
+<div class="w-full flex flex-wrap items-center justify-between gap-4">
+<!-- Brand & Hardware Identifier -->
+<div class="flex items-center space-x-4"><button id="headerToggleSidebarBtn" type="button" title="Toggle Sidebar" class="p-2 rounded-lg bg-slate-900/90 border border-slate-800 text-slate-400 hover:text-cyan-400 hover:border-cyan-500/40 transition-colors flex items-center justify-center cursor-pointer"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path></svg></button>
+<div class="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500/20 to-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 flex-shrink-0">
+<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<h1 class="font-bold text-lg text-white tracking-wide">LUXMONITOR // ESP32</h1>
+<span class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-cyan-950/80 text-cyan-400 border border-cyan-500/30">NODE_01</span>
+<span class="text-[10px] px-2 py-0.5 rounded font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-semibold">ONLINE</span>
+</div>
+<p class="text-xs text-slate-400 font-mono">Sensoring Ruang Tamu • RTDB Realtime Node</p>
+</div>
+</div>
+<!-- Realtime Telemetry Status Bar -->
+<div class="flex flex-wrap items-center gap-3 sm:gap-6 text-xs font-mono">
+<div class="hidden lg:flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-md border border-slate-800">
+<span class="text-slate-400">Ping:</span>
+<span class="text-cyan-400 font-bold" id="pingValue">45 ms</span>
+</div>
+<div class="hidden md:flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-md border border-slate-800">
+<span class="text-slate-400">Sensor:</span>
+<span class="text-amber-400">BH1750 (I2C)</span>
+</div>
+<button class="flex items-center gap-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 px-3 py-1.5 rounded-md border border-cyan-500/30 transition-all font-semibold cursor-pointer" id="liveStreamToggle">
+<span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+<span class="">LIVE SYNC: AKTIF</span>
+</button>
+</div>
+</div>
+</header>
+<!-- END: NavigationBar -->
+<!-- BEGIN: MainContentContainer -->
+<main class="flex-1 w-full px-3 sm:px-4 py-4 flex flex-col gap-4 min-h-0">
+<!-- BEGIN: RealtimeLuxAndConditionTopCard (Full Width Control Room Banner) -->
+<section class="w-full bg-[#0c1322] border-2 border-amber-500/40 rounded-xl p-4 md:p-5 glow-amber-box relative overflow-hidden shadow-2xl" data-purpose="realtime-status-banner">
+<div class="absolute -right-20 -top-20 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+<div class="absolute -left-20 -bottom-20 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+<!-- Header Bar -->
+<div class="flex flex-wrap items-center justify-between border-b border-slate-800/80 pb-3 mb-4 gap-3">
+<div class="flex items-center gap-3">
+<span class="flex h-3.5 w-3.5 relative">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+<span class="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-500"></span>
+</span>
+<h2 class="text-lg md:text-xl font-bold tracking-tight text-white uppercase font-sans">
+Data Realtime Lux dan Kondisi
+</h2>
+<span class="text-xs px-2.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono uppercase tracking-wider">ESP32-WROOM Stream</span>
+</div>
+<div class="flex items-center gap-4 text-xs font-mono">
+<div class="flex items-center gap-2 bg-slate-900/90 px-3 py-1.5 rounded border border-slate-800">
+<span class="text-slate-400">Firebase Node ID:</span>
+<span class="text-cyan-400 font-bold tracking-wider" id="firebaseNodeKey">-P4zAAMBQ0e0HA94WTx6</span>
+</div>
+<div class="hidden sm:flex items-center gap-2 bg-slate-900/90 px-3 py-1.5 rounded border border-slate-800 text-slate-300">
+<span class="text-slate-400">Update Terakhir:</span>
+<span class="text-emerald-400 font-semibold">Baru saja (Realtime)</span>
+</div>
+</div>
+</div>
+<!-- Main KPI Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+<!-- Big Lux Display -->
+<div class="lg:col-span-4 bg-slate-900/60 p-4 rounded-lg border border-slate-800/80 flex flex-col justify-between">
+<div>
+<div class="flex justify-between items-center text-xs font-mono text-slate-400 uppercase tracking-wider mb-1">
+<span class="">Intensitas Terdeteksi</span>
+<span class="text-amber-400 font-semibold">Satuan: Lux (lx)</span>
+</div>
+<div class="flex items-baseline gap-3 my-2">
+<span class="text-6xl md:text-7xl font-extrabold tracking-tighter text-amber-400 font-mono drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" id="realtimeLuxValue">992</span>
+<span class="text-2xl text-slate-300 font-mono font-semibold">Lux</span>
+</div>
+</div>
+<div class="flex items-center gap-2 text-xs text-slate-400 font-mono pt-2 border-t border-slate-800/70">
+<span class="text-emerald-400 font-semibold">↑ +18.4%</span>
+<span class="">dibanding rerata 1 jam terakhir (838 lx)</span>
+</div>
+</div>
+<!-- Status Condition Box -->
+<div class="lg:col-span-5 bg-slate-900/60 p-4 rounded-lg border border-slate-800/80 flex flex-col justify-between">
+<div>
+<div class="text-xs font-mono text-slate-400 uppercase tracking-wider mb-2">Evaluasi Kondisi Ambien</div>
+<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-amber-500/20 border border-amber-500/50 text-amber-300 font-bold text-base md:text-lg mb-2 shadow-[0_0_12px_rgba(245,158,11,0.2)]" id="realtimeConditionBadge">
+<svg class="w-5 h-5 text-amber-400 flex-shrink-0 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span class="" id="realtimeConditionText">BERLEBIHAN (Terlalu Terang)</span>
+</div>
+<p class="text-xs text-slate-300 leading-relaxed">
+Tingkat penerangan melebihi standar kenyamanan visual ruang tamu (SNI 03-6197: 150-300 Lux). Disarankan meredupkan lampu tirai/dimmer.
+</p>
+</div>
+<div class="mt-3 pt-2.5 border-t border-slate-800 text-[11px] font-mono text-slate-400 flex justify-between">
+<span class="">Standar Ruang Tamu: 150 - 250 lx</span>
+<span class="text-amber-400 font-bold">Kategori: Sangat Terang</span>
+</div>
+</div>
+<!-- Lux Spectrum Gauge & Telemetry Metadata -->
+<div class="lg:col-span-3 bg-slate-900/60 p-4 rounded-lg border border-slate-800/80 flex flex-col justify-between">
+<div class="text-xs font-mono text-slate-400 uppercase tracking-wider mb-2">Statistik Sesi Hari Ini</div>
+<div class="grid grid-cols-2 gap-2 text-xs font-mono bg-slate-950/70 p-2.5 rounded border border-slate-800/70 flex-1 content-center">
+<div>
+<span class="text-slate-500 block text-[10px]">WAKTU LOKAL:</span>
+<span class="text-cyan-400 font-semibold" id="telemetryFormattedTime">14:43:18 WIB</span>
+</div>
+<div>
+<span class="text-slate-500 block text-[10px]">AKURASI SENSOR:</span>
+<span class="text-slate-200 font-semibold">±20% (LX)</span>
+</div>
+<div class="pt-1">
+<span class="text-slate-500 block text-[10px]">MIN / MAKS:</span>
+<span class="text-slate-200">112 / 1,040 lx</span>
+</div>
+<div class="pt-1">
+<span class="text-slate-500 block text-[10px]">RATA-RATA:</span>
+<span class="text-slate-200">438 lx</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- END: RealtimeLuxAndConditionTopCard -->
+<!-- BEGIN: HistorySectionSplitGrid (Full Width 2-Column Control Room Grid) -->
+<section class="grid grid-cols-1 xl:grid-cols-12 gap-4 flex-1 items-stretch" data-purpose="history-analytics-section">
+<!-- ChartHistoryData (Kolom Kiri Lebar) -->
+<div class="xl:col-span-6 bg-[#0c1322] border-2 border-slate-700 hover:border-cyan-500/50 transition-colors rounded-xl p-4 md:p-5 glow-cyan-box flex flex-col justify-between shadow-xl" data-purpose="chart-history-card">
+<div>
+<div class="flex flex-wrap items-center justify-between pb-3 mb-3 border-b border-slate-800 gap-3">
+<div class="flex items-center gap-2">
+<svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<h3 class="text-lg md:text-xl font-bold tracking-tight text-white uppercase">Chart History Data</h3>
+</div>
+<div class="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs font-mono">
+<button class="timeframe-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition" data-range="1h">1 Jam</button>
+<button class="timeframe-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition" data-range="6h">6 Jam</button>
+<button class="timeframe-btn px-2.5 py-1 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold" data-range="24h">24 Jam</button>
+<button class="timeframe-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition" data-range="7d">7 Hari</button>
+</div>
+</div>
+<div class="flex flex-wrap items-center justify-between gap-2 text-xs font-mono mb-3 text-slate-400 bg-slate-900/60 p-2.5 rounded border border-slate-800">
+<div class="flex items-center gap-4">
+<span class="flex items-center gap-1.5">
+<span class="w-3 h-3 rounded-full bg-amber-400 inline-block shadow-[0_0_6px_#f59e0b]"></span>
+Intensitas Lux
+</span>
+<span class="flex items-center gap-1.5">
+<span class="w-4 h-0.5 bg-rose-500 inline-block"></span>
+Batas Silau (&gt;750 lx)
+</span>
+<span class="flex items-center gap-1.5">
+<span class="w-4 h-0.5 bg-emerald-500 inline-block"></span>
+Batas Nyaman (150-500 lx)
+</span>
+</div>
+<div class="text-[11px] text-cyan-400 font-semibold">
+Puncak: 992 lx @ 14:43
+</div>
+</div>
+<div class="relative w-full h-[380px] md:h-[440px] bg-slate-950/50 rounded-lg p-2 border border-slate-800/80">
+<canvas id="luxHistoryChart" width="248" height="634" style="display: block; box-sizing: border-box; height: 422.7px; width: 165.3px;"></canvas>
+</div>
+</div>
+<div class="flex items-center justify-between text-xs font-mono text-slate-500 mt-3 pt-2.5 border-t border-slate-800">
+<span class="">Frekuensi Sampling: 5 detik / record</span>
+<span class="text-cyan-400">Sinkron RTDB Aktif</span>
+</div>
+</div>
+<!-- TableHistoryData (Kolom Kanan Lebar) -->
+<div class="xl:col-span-6 bg-[#0c1322] border-2 border-slate-700 hover:border-cyan-500/50 transition-colors rounded-xl p-4 md:p-5 glow-cyan-box flex flex-col justify-between shadow-xl" data-purpose="table-history-card">
+<div>
+<div class="mb-3 flex flex-col gap-2.5">
+<div class="relative">
+<input class="w-full bg-slate-900 border border-slate-700 rounded-lg py-2 pl-9 pr-4 text-xs font-mono text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" id="tableSearchInput" placeholder="Cari berdasarkan Node Key, Kondisi, atau Nilai Lux..." type="text">
+<svg class="w-4 h-4 text-slate-500 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</div>
+<!-- Date Range Filter Bar -->
+<div class="flex flex-wrap items-center justify-between gap-2 bg-slate-950/70 p-2 rounded-lg border border-slate-800 text-xs font-mono">
+<div class="flex flex-wrap items-center gap-1.5">
+<span class="text-[11px] text-slate-400 flex items-center gap-1 mr-1">
+<svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+        Rentang:
+      </span>
+<button class="px-2 py-0.5 rounded text-[11px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold transition hover:bg-cyan-500/30" type="button">Hari Ini</button>
+<button class="px-2 py-0.5 rounded text-[11px] bg-slate-900 text-slate-400 hover:text-white border border-slate-800 transition" type="button">24 Jam</button>
+<button class="px-2 py-0.5 rounded text-[11px] bg-slate-900 text-slate-400 hover:text-white border border-slate-800 transition" type="button">7 Hari</button>
+<button class="px-2 py-0.5 rounded text-[11px] bg-slate-900 text-slate-400 hover:text-white border border-slate-800 transition" type="button">Kustom</button>
+</div>
+<div class="flex items-center gap-1.5 text-[11px]">
+<div class="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded border border-slate-800 text-slate-300 focus-within:border-cyan-500/50">
+<span class="text-slate-500 text-[10px]">DARI:</span>
+<input class="bg-transparent text-slate-200 border-0 p-0 text-[11px] font-mono focus:ring-0 cursor-pointer" type="date" value="2025-05-18">
+</div>
+<span class="text-slate-600">—</span>
+<div class="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded border border-slate-800 text-slate-300 focus-within:border-cyan-500/50">
+<span class="text-slate-500 text-[10px]">SAMPAI:</span>
+<input class="bg-transparent text-slate-200 border-0 p-0 text-[11px] font-mono focus:ring-0 cursor-pointer" type="date" value="2025-05-18">
+</div>
+</div>
+</div>
+</div>
+<div class="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950/60 max-h-[380px] md:max-h-[440px] overflow-y-auto" data-purpose="history-table-container">
+<table class="w-full text-left text-xs font-mono" id="telemetryDataTable">
+<thead class="bg-slate-900/90 text-slate-400 uppercase tracking-wider sticky top-0 border-b border-slate-800 z-10">
+<tr>
+<th class="py-2.5 px-3" scope="col">Waktu</th>
+<th class="py-2.5 px-3" scope="col">Firebase Key</th>
+<th class="py-2.5 px-3 text-right" scope="col">Nilai Lux</th>
+<th class="py-2.5 px-3" scope="col">Status Kondisi</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-800/80 text-slate-300" id="tableBody">
+<tr class="bg-amber-500/10 hover:bg-amber-500/20 transition-colors">
+<td class="py-2.5 px-3 whitespace-nowrap text-amber-300 font-bold flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+14:43:18
+</td>
+<td class="py-2.5 px-3 font-semibold text-cyan-400 whitespace-nowrap">-P4zAAMBQ0e0HA94WTx6</td>
+<td class="py-2.5 px-3 text-right font-bold text-amber-300">992 lx</td>
+<td class="py-2.5 px-3 whitespace-nowrap">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40">
+BERLEBIHAN (Terlalu Terang)
+</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-900/70 transition-colors">
+<td class="py-2.5 px-3 whitespace-nowrap text-slate-400">14:43:13</td>
+<td class="py-2.5 px-3 text-slate-400 whitespace-nowrap">-P4zA9M9Q3e8HA91WEp2</td>
+<td class="py-2.5 px-3 text-right font-semibold text-amber-300">985 lx</td>
+<td class="py-2.5 px-3 whitespace-nowrap">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40">
+BERLEBIHAN (Terlalu Terang)
+</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-900/70 transition-colors">
+<td class="py-2.5 px-3 whitespace-nowrap text-slate-400">14:43:08</td>
+<td class="py-2.5 px-3 text-slate-400 whitespace-nowrap">-P4zA7z2P7a1HA88QKa1</td>
+<td class="py-2.5 px-3 text-right font-semibold text-amber-300">940 lx</td>
+<td class="py-2.5 px-3 whitespace-nowrap">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40">
+BERLEBIHAN (Terlalu Terang)
+</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-900/70 transition-colors">
+<td class="py-2.5 px-3 whitespace-nowrap text-slate-400">14:43:03</td>
+<td class="py-2.5 px-3 text-slate-400 whitespace-nowrap">-P4zA5k6D1b2HB67LMq9</td>
+<td class="py-2.5 px-3 text-right font-semibold text-cyan-300">710 lx</td>
+<td class="py-2.5 px-3 whitespace-nowrap">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">
+CUKUP TERANG
+</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-900/70 transition-colors">
+<td class="py-2.5 px-3 whitespace-nowrap text-slate-400">14:42:58</td>
+<td class="py-2.5 px-3 text-slate-400 whitespace-nowrap">-P4zA3j8F9c3HB42NPs4</td>
+<td class="py-2.5 px-3 text-right font-semibold text-emerald-400">480 lx</td>
+<td class="py-2.5 px-3 whitespace-nowrap">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+IDEAL (Normal)
+</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-900/70 transition-colors">
+<td class="py-2.5 px-3 whitespace-nowrap text-slate-400">14:42:53</td>
+<td class="py-2.5 px-3 text-slate-400 whitespace-nowrap">-P4zA1h4K5e4HB10KLr7</td>
+<td class="py-2.5 px-3 text-right font-semibold text-emerald-400">350 lx</td>
+<td class="py-2.5 px-3 whitespace-nowrap">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+IDEAL (Normal)
+</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-900/70 transition-colors">
+<td class="py-2.5 px-3 whitespace-nowrap text-slate-400">14:42:48</td>
+<td class="py-2.5 px-3 text-slate-400 whitespace-nowrap">-P4z9zg1N8g5HA98JJq3</td>
+<td class="py-2.5 px-3 text-right font-semibold text-blue-400">120 lx</td>
+<td class="py-2.5 px-3 whitespace-nowrap">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40">
+REDUP (Kurang Terang)
+</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="flex flex-wrap items-center justify-between text-xs font-mono text-slate-400 mt-3 pt-2.5 border-t border-slate-800 gap-2">
+<span class="">Menampilkan 7 dari 1,420 catatan telemetri</span>
+<div class="flex items-center gap-1">
+<button class="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded disabled:opacity-50" disabled="">←</button>
+<span class="px-2.5 py-1 bg-cyan-950 text-cyan-400 border border-cyan-500/40 rounded">1</span>
+<button class="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded">2</button>
+<button class="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded">3</button>
+<button class="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded">→</button>
+</div>
+</div>
+</div>
+</section>
+<!-- END: HistorySectionSplitGrid -->
+</main>
+<!-- END: MainContentContainer -->
+<!-- BEGIN: FooterStatus -->
+<footer class="border-t border-slate-800/80 bg-[#080d16] px-4 sm:px-6 py-4 mt-6 text-xs font-mono text-slate-500 w-full" data-purpose="system-footer">
+<div class="w-full flex flex-wrap justify-between items-center gap-4">
+<div class="flex items-center gap-3">
+<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+<span class="text-slate-400">ESP32 Hardware Stream: <span class="text-emerald-400 font-semibold">TERHUBUNG</span> (WebSocket/RTDB SSE)</span>
+</div>
+<div>
+<span class="">Firebase Host: <code class="text-slate-400">akuisisi-data-sensor-esp32-default-rtdb.asia-southeast1.firebasedatabase.app</code></span>
+</div>
+</div>
+</footer>
+<!-- END: FooterStatus -->
+<!-- BEGIN: JavaScript Logic (Charts & Simulation) -->
+<script data-purpose="chart-initialization">
+    document.addEventListener('DOMContentLoaded', () => {
+      const ctx = document.getElementById('luxHistoryChart').getContext('2d');
+
+      // Create glowing gradient for Chart Area
+      const gradientAmber = ctx.createLinearGradient(0, 0, 0, 350);
+      gradientAmber.addColorStop(0, 'rgba(245, 158, 11, 0.45)');
+      gradientAmber.addColorStop(0.5, 'rgba(245, 158, 11, 0.15)');
+      gradientAmber.addColorStop(1, 'rgba(245, 158, 11, 0.0)');
+
+      // History Data Points
+      const labels = ['14:15', '14:20', '14:25', '14:30', '14:35', '14:38', '14:40', '14:41', '14:42', '14:43:18'];
+      const dataPoints = [210, 240, 310, 480, 520, 680, 790, 850, 940, 992];
+
+      const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Intensitas Cahaya (Lux)',
+              data: dataPoints,
+              borderColor: '#f59e0b',
+              borderWidth: 2.5,
+              backgroundColor: gradientAmber,
+              fill: true,
+              tension: 0.35,
+              pointBackgroundColor: '#fbbf24',
+              pointBorderColor: '#070b12',
+              pointBorderWidth: 2,
+              pointRadius: [3, 3, 3, 3, 3, 4, 4, 5, 5, 7],
+              pointHoverRadius: 8
+            },
+            {
+              label: 'Ambang Batas Terlalu Terang (750 lx)',
+              data: [750, 750, 750, 750, 750, 750, 750, 750, 750, 750],
+              borderColor: 'rgba(244, 63, 94, 0.65)',
+              borderWidth: 1.5,
+              borderDash: [5, 5],
+              fill: false,
+              pointRadius: 0
+            },
+            {
+              label: 'Batas Atas Standar Nyaman (500 lx)',
+              data: [500, 500, 500, 500, 500, 500, 500, 500, 500, 500],
+              borderColor: 'rgba(16, 185, 129, 0.65)',
+              borderWidth: 1.5,
+              borderDash: [4, 4],
+              fill: false,
+              pointRadius: 0
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false
+          },
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              backgroundColor: '#0c1322',
+              titleColor: '#06b6d4',
+              bodyColor: '#f8fafc',
+              borderColor: '#334155',
+              borderWidth: 1,
+              padding: 10,
+              displayColors: true,
+              callbacks: {
+                label: function(context) {
+                  return ` ${context.dataset.label}: ${context.parsed.y} lx`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: {
+                color: 'rgba(255, 255, 255, 0.05)'
+              },
+              ticks: {
+                color: '#64748b',
+                font: {
+                  family: 'JetBrains Mono',
+                  size: 11
+                }
+              }
+            },
+            y: {
+              min: 0,
+              max: 1200,
+              grid: {
+                color: 'rgba(255, 255, 255, 0.05)'
+              },
+              ticks: {
+                color: '#64748b',
+                font: {
+                  family: 'JetBrains Mono',
+                  size: 11
+                },
+                stepSize: 200,
+                callback: function(val) {
+                  return val + ' lx';
+                }
+              }
+            }
+          }
+        }
+      });
+
+      // Window resize adaptation
+      window.addEventListener('resize', () => {
+        chart.resize();
+      });
+    });
+  </script>
+<script data-purpose="telemetry-simulation">
+    // Light telemetry simulation for ping & live toggle
+    const pingEl = document.getElementById('pingValue');
+    setInterval(() => {
+      const ping = Math.floor(Math.random() * 15) + 38;
+      if (pingEl) pingEl.textContent = `${ping} ms`;
+    }, 4000);
+
+    // Filter table live search
+    const searchInput = document.getElementById('tableSearchInput');
+    const tableBody = document.getElementById('tableBody');
+    if (searchInput && tableBody) {
+      searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase();
+        const rows = tableBody.getElementsByTagName('tr');
+        Array.from(rows).forEach(row => {
+          const text = row.innerText.toLowerCase();
+          row.style.display = text.includes(query) ? '' : 'none';
+        });
+      });
+    }
+
+    // CSV Download trigger helper
+    const exportBtn = document.getElementById('exportCsvBtn');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        alert('Mengunduh dataset telemetri lux_history_export.csv...');
+      });
+    }
+  </script>
+<!-- END: JavaScript Logic -->
+
+
+<script data-purpose="sidebar-toggle-script">document.addEventListener('DOMContentLoaded',()=>{const sidebar=document.getElementById('mainSidebar');const collapseBtn=document.getElementById('collapseSidebarBtn');const expandBtn=document.getElementById('expandSidebarBtn');const headerToggleBtn=document.getElementById('headerToggleSidebarBtn');function toggleSidebar(collapse){if(collapse===undefined){collapse=!sidebar.classList.contains('hidden');}if(collapse){sidebar.classList.add('hidden');if(expandBtn){expandBtn.classList.remove('hidden');expandBtn.classList.add('flex');}}else{sidebar.classList.remove('hidden');if(expandBtn){expandBtn.classList.add('hidden');expandBtn.classList.remove('flex');}}window.dispatchEvent(new Event('resize'));}if(collapseBtn){collapseBtn.addEventListener('click',()=>toggleSidebar(true));}if(expandBtn){expandBtn.addEventListener('click',()=>toggleSidebar(false));}if(headerToggleBtn){headerToggleBtn.addEventListener('click',()=>toggleSidebar());}});</script></body></html>

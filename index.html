@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html class="dark" lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>LUXMONITOR // ESP32 - Monitoring Pencahayaan 3</title>
+
+  <!-- Google Fonts: Space Grotesk & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN with Forms & Container Queries -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+
+  <!-- Chart.js CDN for Telemetry Analytics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Firebase JavaScript SDK (Compat CDN for zero-install client-side connection) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <!-- Tailwind Configuration -->
+  <script data-purpose="tailwind-config">
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            iot: {
+              bg: '#070b12',
+              card: '#0c1322',
+              cardBorder: '#1e293b',
+              neonCyan: '#06b6d4',
+              neonAmber: '#f59e0b',
+              glowYellow: '#fbbf24',
+              danger: '#f43f5e',
+              emerald: '#10b981'
+            }
+          },
+          fontFamily: {
+            sans: ['Space Grotesk', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Custom Styles for Technical IoT Grid and Glow Effects -->
+  <style data-purpose="custom-grid-background">
+    body {
+      background-color: #070b12;
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(6, 182, 212, 0.08), transparent 45%),
+        linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 100% 100%, 36px 36px, 36px 36px;
+    }
+
+    .glow-amber-box {
+      box-shadow: 0 0 25px -5px rgba(245, 158, 11, 0.35);
+    }
+
+    .glow-cyan-box {
+      box-shadow: 0 0 20px -5px rgba(6, 182, 212, 0.25);
+    }
+
+    /* Custom Technical Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090e18;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #06b6d4;
+    }
+  </style>
+</head>
+<body class="text-slate-200 font-sans min-h-screen flex flex-col antialiased selection:bg-cyan-500 selection:text-black">
+
+<!-- BEGIN: NavigationBar -->
+<header class="border-b border-slate-800 bg-[#0c1322]/90 backdrop-blur-md sticky top-0 z-50 px-4 sm:px-6 py-3 w-full shadow-lg" data-purpose="top-navigation">
+  <div class="w-full flex flex-wrap items-center justify-between gap-4 max-w-[1920px] mx-auto">
+    <!-- Brand & Hardware Identifier -->
+    <div class="flex items-center space-x-3 sm:space-x-4">
+      <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500/20 to-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 flex-shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.2)]">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+        </svg>
+      </div>
+      <div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <h1 class="font-bold text-base sm:text-lg text-white tracking-wide">LUXMONITOR // ESP32</h1>
+          <span class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-cyan-950/80 text-cyan-400 border border-cyan-500/30">NODE_01</span>
+          <span id="connectionBadge" class="text-[10px] px-2 py-0.5 rounded font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-semibold flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" id="badgePulseDot"></span>
+            <span id="badgeStatusText">ONLINE</span>
+          </span>
+        </div>
+        <p class="text-xs text-slate-400 font-mono">Sensoring Ruang Tamu • RTDB Realtime Node</p>
+      </div>
+    </div>
+
+    <!-- Realtime Telemetry Status Bar -->
+    <div class="flex flex-wrap items-center gap-2 sm:gap-4 text-xs font-mono">
+      <div class="hidden lg:flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-md border border-slate-800">
+        <span class="text-slate-400">Ping:</span>
+        <span class="text-cyan-400 font-bold" id="pingValue">38 ms</span>
+      </div>
+      <div class="hidden md:flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-md border border-slate-800">
+        <span class="text-slate-400">Sensor:</span>
+        <span class="text-amber-400 font-semibold">BH1750 (I2C)</span>
+      </div>
+      <button id="refreshBtn" title="Muat ulang telemetri dari Firebase" class="flex items-center gap-1.5 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-md border border-slate-800 transition-all font-mono cursor-pointer">
+        <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+        <span class="hidden sm:inline">Refresh</span>
+      </button>
+      <button class="flex items-center gap-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 px-3 py-1.5 rounded-md border border-cyan-500/30 transition-all font-semibold cursor-pointer shadow-[0_0_12px_rgba(6,182,212,0.15)]" id="liveStreamToggle">
+        <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" id="streamIndicatorDot"></span>
+        <span id="streamStatusText">LIVE SYNC: AKTIF</span>
+      </button>
+    </div>
+  </div>
+</header>
+<!-- END: NavigationBar -->
+
+<!-- BEGIN: MainContentContainer -->
+<main class="flex-1 w-full px-3 sm:px-4 py-4 flex flex-col gap-4 min-h-0 max-w-[1920px] mx-auto">
+  <!-- BEGIN: RealtimeLuxAndConditionTopCard (Full Width Control Room Banner) -->
+  <section class="w-full bg-[#0c1322] border-2 border-amber-500/40 rounded-xl p-4 md:p-5 glow-amber-box relative overflow-hidden shadow-2xl" data-purpose="realtime-status-banner">
+    <div class="absolute -right-20 -top-20 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+    <div class="absolute -left-20 -bottom-20 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+    <!-- Header Bar -->
+    <div class="flex flex-wrap items-center justify-between border-b border-slate-800/80 pb-3 mb-4 gap-3 relative z-10">
+      <div class="flex items-center gap-3">
+        <span class="flex h-3.5 w-3.5 relative">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-500"></span>
+        </span>
+        <h2 class="text-base sm:text-lg md:text-xl font-bold tracking-tight text-white uppercase font-sans">
+          Data Realtime Lux dan Kondisi
+        </h2>
+        <span class="text-xs px-2.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono uppercase tracking-wider">
+          ESP32-WROOM Stream
+        </span>
+      </div>
+      <div class="flex items-center gap-3 text-xs font-mono">
+        <div class="flex items-center gap-2 bg-slate-900/90 px-3 py-1.5 rounded border border-slate-800">
+          <span class="text-slate-400">Firebase Node ID:</span>
+          <span class="text-cyan-400 font-bold tracking-wider font-mono" id="firebaseNodeKey">-P64cdAf-REbQoqxi3sP</span>
+        </div>
+        <div class="hidden sm:flex items-center gap-2 bg-slate-900/90 px-3 py-1.5 rounded border border-slate-800 text-slate-300">
+          <span class="text-slate-400">Update Terakhir:</span>
+          <span class="text-emerald-400 font-semibold" id="lastUpdatedText">Baru saja (Realtime)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main KPI Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch relative z-10">
+      <!-- Big Lux Display -->
+      <div class="lg:col-span-4 bg-slate-900/60 p-4 rounded-lg border border-slate-800/80 flex flex-col justify-between backdrop-blur-sm">
+        <div>
+          <div class="flex justify-between items-center text-xs font-mono text-slate-400 uppercase tracking-wider mb-1">
+            <span>Intensitas Terdeteksi</span>
+            <span class="text-amber-400 font-semibold">Satuan: Lux (lx)</span>
+          </div>
+          <div class="flex items-baseline gap-3 my-2">
+            <span class="text-6xl md:text-7xl font-extrabold tracking-tighter text-amber-400 font-mono drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]" id="realtimeLuxValue">902</span>
+            <span class="text-2xl text-slate-300 font-mono font-semibold">Lux</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-slate-400 font-mono pt-2 border-t border-slate-800/70">
+          <span class="text-emerald-400 font-semibold" id="trendChangeText">↑ +18.4%</span>
+          <span id="trendDescText">dibanding rerata sesi saat ini (512 lx)</span>
+        </div>
+      </div>
+
+      <!-- Status Condition Box -->
+      <div class="lg:col-span-5 bg-slate-900/60 p-4 rounded-lg border border-slate-800/80 flex flex-col justify-between backdrop-blur-sm">
+        <div>
+          <div class="text-xs font-mono text-slate-400 uppercase tracking-wider mb-2">Evaluasi Kondisi Ambien</div>
+          <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-amber-500/20 border border-amber-500/50 text-amber-300 font-bold text-base md:text-lg mb-2 shadow-[0_0_12px_rgba(245,158,11,0.2)]" id="realtimeConditionBadge">
+            <svg id="conditionIcon" class="w-5 h-5 text-amber-400 flex-shrink-0 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+            <span id="realtimeConditionText">Terang (Terlalu Terang)</span>
+          </div>
+          <p class="text-xs text-slate-300 leading-relaxed font-sans" id="conditionDesc">
+            Tingkat penerangan melebihi standar kenyamanan visual ruang tamu (SNI 03-6197: 150-300 Lux). Disarankan meredupkan lampu atau tirai untuk menghindari silau.
+          </p>
+        </div>
+        <div class="mt-3 pt-2.5 border-t border-slate-800 text-[11px] font-mono text-slate-400 flex flex-wrap justify-between gap-1">
+          <span>Standar Ruang Tamu: 150 - 250 lx</span>
+          <span class="text-amber-400 font-bold" id="conditionSubCategory">Kategori: Sangat Terang (Silau)</span>
+        </div>
+      </div>
+
+      <!-- Lux Spectrum Gauge & Telemetry Metadata -->
+      <div class="lg:col-span-3 bg-slate-900/60 p-4 rounded-lg border border-slate-800/80 flex flex-col justify-between backdrop-blur-sm">
+        <div class="text-xs font-mono text-slate-400 uppercase tracking-wider mb-2">Statistik Sesi Hari Ini</div>
+        <div class="grid grid-cols-2 gap-2 text-xs font-mono bg-slate-950/70 p-2.5 rounded border border-slate-800/70 flex-1 content-center">
+          <div>
+            <span class="text-slate-500 block text-[10px]">WAKTU LOKAL:</span>
+            <span class="text-cyan-400 font-semibold" id="telemetryFormattedTime">--:--:-- WIB</span>
+          </div>
+          <div>
+            <span class="text-slate-500 block text-[10px]">AKURASI SENSOR:</span>
+            <span class="text-slate-200 font-semibold">±20% (LX)</span>
+          </div>
+          <div class="pt-1">
+            <span class="text-slate-500 block text-[10px]">MIN / MAKS:</span>
+            <span class="text-slate-200" id="minMaxText">120 / 992 lx</span>
+          </div>
+          <div class="pt-1">
+            <span class="text-slate-500 block text-[10px]">RATA-RATA:</span>
+            <span class="text-slate-200" id="avgLuxText">512 lx</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Visual Lux Spectrum Meter Bar -->
+    <div class="mt-4 pt-3 border-t border-slate-800/80 relative z-10">
+      <div class="flex justify-between items-center text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">
+        <span>Spektrum Tingkat Pencahayaan (0 - 1.200 lx)</span>
+        <span class="text-cyan-400">
+          Posisi Sensor: <b class="text-white" id="spectrumValueLabel">902 lx</b> (<span id="spectrumPctLabel">75%</span>)
+        </span>
+      </div>
+
+      <!-- Multi-colored Spectrum Track -->
+      <div class="relative w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800 flex">
+        <div style="width: 12.5%" class="h-full bg-blue-600/70" title="Redup (<150 lx)"></div>
+        <div style="width: 12.5%" class="h-full bg-emerald-500" title="Standar SNI Ruang Tamu (150-300 lx)"></div>
+        <div style="width: 16.6%" class="h-full bg-cyan-400" title="Terang Nyaman (300-500 lx)"></div>
+        <div style="width: 20.8%" class="h-full bg-amber-400" title="Cukup Terang (500-750 lx)"></div>
+        <div style="width: 37.6%" class="h-full bg-rose-500" title="Silau (>750 lx)"></div>
+      </div>
+
+      <!-- Needle Marker -->
+      <div class="relative w-full h-4 mt-1">
+        <div class="absolute top-0 -translate-x-1/2 flex flex-col items-center transition-all duration-300" id="spectrumNeedle" style="left: 75%;">
+          <div class="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-b-[6px] border-b-cyan-400"></div>
+          <span class="text-[9px] font-mono font-bold text-cyan-300 tracking-tighter whitespace-nowrap" id="spectrumNeedleText">
+            ▲ 902 lx
+          </span>
+        </div>
+
+        <!-- Scale Labels -->
+        <div class="flex justify-between text-[9px] font-mono text-slate-500 pt-2">
+          <span>0 lx</span>
+          <span class="text-emerald-400">150 lx (SNI Min)</span>
+          <span class="text-cyan-400">300 lx (SNI Maks)</span>
+          <span class="text-amber-400">500 lx</span>
+          <span class="text-rose-400">750 lx (Silau)</span>
+          <span>1.200+ lx</span>
+        </div>
+      </div>
+    </div>
+  </section>
+  <!-- END: RealtimeLuxAndConditionTopCard -->
+
+  <!-- BEGIN: HistorySectionSplitGrid (Full Width 2-Column Control Room Grid) -->
+  <section class="grid grid-cols-1 xl:grid-cols-12 gap-4 flex-1 items-stretch" data-purpose="history-analytics-section">
+    <!-- ChartHistoryData (Kolom Kiri Lebar) -->
+    <div class="xl:col-span-6 bg-[#0c1322] border-2 border-slate-700 hover:border-cyan-500/50 transition-colors rounded-xl p-4 md:p-5 glow-cyan-box flex flex-col justify-between shadow-xl" data-purpose="chart-history-card">
+      <div>
+        <div class="flex flex-wrap items-center justify-between pb-3 mb-3 border-b border-slate-800 gap-3">
+          <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+            </svg>
+            <h3 class="text-base sm:text-lg md:text-xl font-bold tracking-tight text-white uppercase font-sans">Chart History Data</h3>
+          </div>
+          <div class="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs font-mono" id="timeframeButtons">
+            <button class="timeframe-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition cursor-pointer" data-range="1h">1 Jam</button>
+            <button class="timeframe-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition cursor-pointer" data-range="6h">6 Jam</button>
+            <button class="timeframe-btn px-2.5 py-1 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold cursor-pointer" data-range="24h">24 Jam</button>
+            <button class="timeframe-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition cursor-pointer" data-range="7d">7 Hari</button>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-mono mb-3 text-slate-400 bg-slate-900/60 p-2.5 rounded border border-slate-800">
+          <div class="flex items-center gap-3 sm:gap-4 flex-wrap">
+            <span class="flex items-center gap-1.5">
+              <span class="w-3 h-3 rounded-full bg-amber-400 inline-block shadow-[0_0_6px_#f59e0b]"></span>
+              Intensitas Lux
+            </span>
+            <span class="flex items-center gap-1.5">
+              <span class="w-4 h-0.5 bg-rose-500 inline-block"></span>
+              Batas Silau (&gt;750 lx)
+            </span>
+            <span class="flex items-center gap-1.5">
+              <span class="w-4 h-0.5 bg-emerald-500 inline-block"></span>
+              Batas Nyaman (150-500 lx)
+            </span>
+          </div>
+          <div class="text-[11px] text-cyan-400 font-semibold" id="peakInfoText">
+            Puncak: 992 lx @ 14:43
+          </div>
+        </div>
+
+        <div class="relative w-full h-[320px] sm:h-[380px] md:h-[440px] bg-slate-950/50 rounded-lg p-2 border border-slate-800/80">
+          <canvas id="luxHistoryChart"></canvas>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between text-xs font-mono text-slate-500 mt-3 pt-2.5 border-t border-slate-800">
+        <span>Frekuensi Sampling: 5 detik / record</span>
+        <span class="text-cyan-400">Sinkron RTDB Aktif</span>
+      </div>
+    </div>
+
+    <!-- TableHistoryData (Kolom Kanan Lebar) -->
+    <div class="xl:col-span-6 bg-[#0c1322] border-2 border-slate-700 hover:border-cyan-500/50 transition-colors rounded-xl p-4 md:p-5 glow-cyan-box flex flex-col justify-between shadow-xl" data-purpose="table-history-card">
+      <div>
+        <div class="mb-3 flex flex-col gap-2.5">
+          <div class="flex items-center justify-between gap-2">
+            <div class="relative flex-1">
+              <input class="w-full bg-slate-900 border border-slate-700 rounded-lg py-2 pl-9 pr-4 text-xs font-mono text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" id="tableSearchInput" placeholder="Cari Node Key, Kondisi, atau Nilai Lux..." type="text">
+              <svg class="w-4 h-4 text-slate-500 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+              </svg>
+            </div>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <button type="button" id="exportCsvBtn" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-mono text-cyan-400 hover:text-white transition cursor-pointer">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+                <span class="hidden sm:inline font-semibold">Ekspor CSV</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-950/70 p-2 rounded-lg border border-slate-800 text-xs font-mono">
+            <div class="flex items-center gap-1.5 flex-wrap" id="rangePillsContainer">
+              <span class="text-[11px] text-slate-400 flex items-center gap-1 mr-1">
+                <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                Rentang:
+              </span>
+              <button type="button" data-range="today" class="range-pill px-2.5 py-1 rounded text-[11px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold transition hover:bg-cyan-500/30 whitespace-nowrap cursor-pointer">Hari Ini</button>
+              <button type="button" data-range="24h" class="range-pill px-2.5 py-1 rounded text-[11px] bg-slate-900 text-slate-400 hover:text-white border border-slate-800 transition whitespace-nowrap cursor-pointer">24 Jam</button>
+              <button type="button" data-range="7d" class="range-pill px-2.5 py-1 rounded text-[11px] bg-slate-900 text-slate-400 hover:text-white border border-slate-800 transition whitespace-nowrap cursor-pointer">7 Hari</button>
+              <button type="button" data-range="all" class="range-pill px-2.5 py-1 rounded text-[11px] bg-slate-900 text-slate-400 hover:text-white border border-slate-800 transition whitespace-nowrap cursor-pointer">Semua</button>
+            </div>
+            <div class="flex items-center gap-1.5 text-[11px] flex-wrap">
+              <div class="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded border border-slate-800 text-slate-300 focus-within:border-cyan-500/50">
+                <span class="text-slate-500 text-[10px]">DARI:</span>
+                <input type="date" id="dateFromInput" class="bg-transparent text-slate-200 border-0 p-0 text-[11px] font-mono focus:ring-0 cursor-pointer">
+              </div>
+              <span class="text-slate-600">—</span>
+              <div class="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded border border-slate-800 text-slate-300 focus-within:border-cyan-500/50">
+                <span class="text-slate-500 text-[10px]">SAMPAI:</span>
+                <input type="date" id="dateToInput" class="bg-transparent text-slate-200 border-0 p-0 text-[11px] font-mono focus:ring-0 cursor-pointer">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950/60 max-h-[380px] md:max-h-[440px] overflow-y-auto" data-purpose="history-table-container">
+          <table class="w-full text-left text-xs font-mono" id="telemetryDataTable">
+            <thead class="bg-slate-900/90 text-slate-400 uppercase tracking-wider sticky top-0 border-b border-slate-800 z-10">
+              <tr>
+                <th class="py-2.5 px-3 whitespace-nowrap" scope="col">WAKTU (WIB)</th>
+                <th class="py-2.5 px-3 whitespace-nowrap" scope="col">FIREBASE KEY / NODE</th>
+                <th class="py-2.5 px-3 text-right whitespace-nowrap" scope="col">NILAI LUX</th>
+                <th class="py-2.5 px-3 whitespace-nowrap" scope="col">KONDISI / STATUS AMBIEN</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/80 text-slate-300" id="tableBody">
+              <!-- Dynamically populated from Firebase -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between text-xs font-mono text-slate-400 mt-3 pt-2.5 border-t border-slate-800 gap-2">
+        <span id="recordCountText">Memuat catatan telemetri...</span>
+        <div class="flex items-center gap-1" id="paginationControls">
+          <!-- Dynamically generated pagination -->
+        </div>
+      </div>
+    </div>
+  </section>
+  <!-- END: HistorySectionSplitGrid -->
+</main>
+<!-- END: MainContentContainer -->
+
+<!-- BEGIN: FooterStatus -->
+<footer class="border-t border-slate-800/80 bg-[#080d16] px-4 sm:px-6 py-4 mt-6 text-xs font-mono text-slate-500 w-full" data-purpose="system-footer">
+  <div class="w-full flex flex-wrap justify-between items-center gap-4 max-w-[1920px] mx-auto">
+    <div class="flex items-center gap-3">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" id="footerPulseDot"></span>
+      <span class="text-slate-400">ESP32 Hardware Stream: <span class="text-emerald-400 font-semibold" id="footerStreamStatus">TERHUBUNG</span> (WebSocket/RTDB SSE)</span>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <span>Firebase Host: <code class="text-slate-300">akuisisi-data-sensor-esp32-default-rtdb.asia-southeast1.firebasedatabase.app</code></span>
+      <span class="text-slate-600 hidden sm:inline">•</span>
+      <span>Path: <code class="text-amber-400">/historyDataCahaya</code></span>
+    </div>
+  </div>
+</footer>
+<!-- END: FooterStatus -->
+
+<!-- Firebase Realtime Synchronizer & Interactive Logic -->
+<script>
+  // KREDENSIAL FIREBASE RTDB
+  const FIREBASE_CONFIG = {
+    databaseURL: "https://akuisisi-data-sensor-esp32-default-rtdb.asia-southeast1.firebasedatabase.app",
+    host: "akuisisi-data-sensor-esp32-default-rtdb.asia-southeast1.firebasedatabase.app",
+    auth: "Bq9VruxnrWFa1cs9j1m5ivqH4qRXjI3PP8NSv4NU",
+    path: "historyDataCahaya"
+  };
+
+  let telemetryRecords = [];
+  let isLiveSync = true;
+  let chartInstance = null;
+  let activeTimeframe = "24h";
+  let activeQuickRange = "today";
+  let currentPage = 1;
+  const itemsPerPage = 8;
+  let eventSource = null;
+  let pollInterval = null;
+  let activeDataMap = {};
+
+  // Live Local Clock (WIB / UTC+7)
+  function updateClock() {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString("id-ID", {
+      timeZone: "Asia/Jakarta",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    }).replace(/\./g, ":");
+    const clockEl = document.getElementById("telemetryFormattedTime");
+    if (clockEl) clockEl.textContent = `${timeStr} WIB`;
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  // Ping Jitter Simulation
+  setInterval(() => {
+    const pingEl = document.getElementById("pingValue");
+    if (pingEl) pingEl.textContent = `${Math.floor(Math.random() * 14) + 32} ms`;
+  }, 4000);
+
+  function normalizeTimestamp(ts) {
+    if (!ts) return Date.now();
+    const num = Number(ts);
+    if (isNaN(num)) return Date.now();
+    return num < 10000000000 ? num * 1000 : num;
+  }
+
+  function formatTime(ts) {
+    const d = new Date(normalizeTimestamp(ts));
+    return d.toLocaleTimeString("id-ID", {
+      timeZone: "Asia/Jakarta",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    }).replace(/\./g, ":");
+  }
+
+  function formatDate(ts) {
+    const d = new Date(normalizeTimestamp(ts));
+    const year = d.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta", year: "numeric" });
+    const month = d.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta", month: "2-digit" });
+    const day = d.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta", day: "2-digit" });
+    return `${year}-${month}-${day}`;
+  }
+
+  function getConditionDetails(condStr, lux) {
+    const clean = (condStr || "").toUpperCase();
+
+    if (clean.includes("BERLEBIHAN") || clean.includes("TERLALU TERANG") || lux > 750) {
+      return {
+        category: "glare",
+        label: condStr || "Terang (Terlalu Terang)",
+        badgeClass: "bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.2)]",
+        textClass: "text-amber-400",
+        description: "Tingkat penerangan melebihi standar kenyamanan visual ruang tamu (SNI 03-6197: 150-300 Lux). Disarankan meredupkan lampu atau tirai untuk menghindari silau.",
+        subCategory: "Kategori: Sangat Terang (Silau)"
+      };
+    }
+
+    if (clean.includes("IDEAL") || clean.includes("NORMAL") || clean.includes("SNI") || (lux >= 150 && lux <= 500)) {
+      return {
+        category: "ideal",
+        label: condStr || "IDEAL (Cahaya Sesuai Standar SNI)",
+        badgeClass: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.2)]",
+        textClass: "text-emerald-400",
+        description: "Tingkat penerangan optimal sesuai standar kenyamanan visual ruang tamu (SNI 03-6197: 150-300 Lux). Kondisi sangat ideal untuk kenyamanan visual dan relaksasi.",
+        subCategory: "Kategori: Standar SNI Terpenuhi"
+      };
+    }
+
+    if (clean.includes("CUKUP") || (lux > 500 && lux <= 750)) {
+      return {
+        category: "bright",
+        label: condStr || "CUKUP TERANG",
+        badgeClass: "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.2)]",
+        textClass: "text-cyan-400",
+        description: "Penerangan berada pada batas atas kenyamanan. Cocok untuk aktivitas membaca/presisi, namun mendekati batas silau.",
+        subCategory: "Kategori: Terang Nyaman"
+      };
+    }
+
+    return {
+      category: "dim",
+      label: condStr || "REDUP (Kurang Terang)",
+      badgeClass: "bg-blue-500/20 text-blue-400 border border-blue-500/40 shadow-[0_0_12px_rgba(59,130,246,0.2)]",
+      textClass: "text-blue-400",
+      description: "Tingkat penerangan berada di bawah standar rekomendasi ruang tamu (< 150 Lux). Disarankan menyalakan lampu penerangan tambahan untuk menjaga kesehatan mata.",
+      subCategory: "Kategori: Kurang Pencahayaan"
+    };
+  }
+
+  function parseFirebaseData(rawObj) {
+    if (!rawObj || typeof rawObj !== "object") return [];
+    const list = [];
+    for (const [key, val] of Object.entries(rawObj)) {
+      if (!val || typeof val !== "object") continue;
+      const ts = normalizeTimestamp(val.timestamp);
+      const lux = typeof val.value === "number" ? val.value : parseFloat(val.value) || 0;
+      const cond = val.condition || (lux > 750 ? "Terang (Terlalu Terang)" : lux >= 150 ? "IDEAL (Cahaya Sesuai Standar SNI)" : "REDUP (Kurang Terang)");
+      list.push({
+        id: key,
+        value: Math.round(lux),
+        condition: cond,
+        timestamp: ts,
+        formattedTime: formatTime(ts),
+        formattedDate: formatDate(ts)
+      });
+    }
+    list.sort((a, b) => b.timestamp - a.timestamp);
+    return list;
+  }
+
+  function renderHeroBanner(records) {
+    if (!records || records.length === 0) return;
+    const latest = records[0];
+    const luxVals = records.map(r => r.value).filter(v => !isNaN(v));
+    const minLux = luxVals.length > 0 ? Math.min(...luxVals) : 0;
+    const maxLux = luxVals.length > 0 ? Math.max(...luxVals) : 0;
+    const sumLux = luxVals.reduce((acc, v) => acc + v, 0);
+    const avgLux = luxVals.length > 0 ? Math.round(sumLux / luxVals.length) : 0;
+
+    document.getElementById("firebaseNodeKey").textContent = latest.id;
+    document.getElementById("realtimeLuxValue").textContent = latest.value.toLocaleString("id-ID");
+    document.getElementById("lastUpdatedText").textContent = `${latest.formattedTime} WIB`;
+    document.getElementById("minMaxText").textContent = `${minLux} / ${maxLux.toLocaleString("id-ID")} lx`;
+    document.getElementById("avgLuxText").textContent = `${avgLux} lx`;
+
+    const diff = latest.value - (records.length > 1 ? records[1].value : avgLux);
+    const pct = avgLux > 0 ? ((diff / avgLux) * 100).toFixed(1) : 0;
+    const trendEl = document.getElementById("trendChangeText");
+    trendEl.textContent = `${pct >= 0 ? "↑ +" : "↓ "}${Math.abs(pct)}%`;
+    trendEl.className = `${pct >= 0 ? "text-emerald-400" : "text-rose-400"} font-semibold`;
+    document.getElementById("trendDescText").textContent = `dibanding rerata sesi saat ini (${avgLux} lx)`;
+
+    const condDetails = getConditionDetails(latest.condition, latest.value);
+    const badgeEl = document.getElementById("realtimeConditionBadge");
+    badgeEl.className = `inline-flex items-center gap-2 px-3 py-1.5 rounded-md font-bold text-base md:text-lg mb-2 ${condDetails.badgeClass}`;
+    document.getElementById("realtimeConditionText").textContent = condDetails.label;
+    document.getElementById("conditionDesc").textContent = condDetails.description;
+    const subCatEl = document.getElementById("conditionSubCategory");
+    subCatEl.textContent = condDetails.subCategory;
+    subCatEl.className = `${condDetails.textClass} font-bold`;
+
+    const spectrumPct = Math.min(100, Math.max(0, (latest.value / 1200) * 100));
+    document.getElementById("spectrumValueLabel").textContent = `${latest.value} lx`;
+    document.getElementById("spectrumPctLabel").textContent = `${spectrumPct.toFixed(0)}%`;
+    document.getElementById("spectrumNeedle").style.left = `${spectrumPct}%`;
+    document.getElementById("spectrumNeedleText").textContent = `▲ ${latest.value} lx`;
+
+    const peakRec = records.find(r => r.value === maxLux) || latest;
+    document.getElementById("peakInfoText").textContent = `Puncak: ${maxLux} lx @ ${peakRec.formattedTime}`;
+  }
+
+  function renderTable() {
+    const tbody = document.getElementById("tableBody");
+    const q = (document.getElementById("tableSearchInput").value || "").toLowerCase().trim();
+    const startDate = document.getElementById("dateFromInput").value;
+    const endDate = document.getElementById("dateToInput").value;
+    const now = Date.now();
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    let filtered = [...telemetryRecords];
+
+    if (activeQuickRange === "today") {
+      filtered = filtered.filter(r => r.formattedDate === todayStr || Math.abs(now - r.timestamp) < 24 * 3600 * 1000);
+    } else if (activeQuickRange === "24h") {
+      filtered = filtered.filter(r => r.timestamp >= now - 24 * 3600 * 1000);
+    } else if (activeQuickRange === "7d") {
+      filtered = filtered.filter(r => r.timestamp >= now - 7 * 24 * 3600 * 1000);
+    }
+
+    if (startDate) {
+      const sMs = new Date(startDate).getTime();
+      filtered = filtered.filter(r => r.timestamp >= sMs);
+    }
+    if (endDate) {
+      const eMs = new Date(endDate).getTime() + 86400000;
+      filtered = filtered.filter(r => r.timestamp <= eMs);
+    }
+
+    if (q) {
+      filtered = filtered.filter(r => 
+        r.formattedTime.toLowerCase().includes(q) ||
+        r.id.toLowerCase().includes(q) ||
+        r.condition.toLowerCase().includes(q) ||
+        r.value.toString().includes(q)
+      );
+    }
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
+    if (currentPage > totalPages) currentPage = totalPages;
+
+    const startIdx = (currentPage - 1) * itemsPerPage;
+    const pageItems = filtered.slice(startIdx, startIdx + itemsPerPage);
+
+    tbody.innerHTML = "";
+    if (pageItems.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="4" class="py-8 text-center text-slate-500 font-mono">Tidak ada catatan telemetri yang cocok dengan filter pencarian.</td></tr>`;
+    } else {
+      pageItems.forEach((r, idx) => {
+        const isLatest = currentPage === 1 && idx === 0;
+        const cond = getConditionDetails(r.condition, r.value);
+        const tr = document.createElement("tr");
+        tr.className = `transition-colors hover:border-l-2 hover:border-cyan-400 ${isLatest ? 'bg-amber-500/10 hover:bg-amber-500/20' : 'hover:bg-slate-900/70'}`;
+        tr.innerHTML = `
+          <td class="py-2.5 px-3 whitespace-nowrap font-medium">
+            <div class="flex items-center gap-1.5">
+              ${isLatest ? '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping flex-shrink-0"></span><span class="text-amber-300 font-bold">' + r.formattedTime + '</span>' : '<span class="text-slate-400">' + r.formattedTime + '</span>'}
+            </div>
+          </td>
+          <td class="py-2.5 px-3 font-semibold text-cyan-400 whitespace-nowrap font-mono">${r.id}</td>
+          <td class="py-2.5 px-3 text-right font-bold whitespace-nowrap">
+            <span class="${cond.category === 'glare' ? 'text-amber-300 font-bold' : cond.category === 'ideal' ? 'text-emerald-400 font-semibold' : 'text-blue-400 font-semibold'}">
+              ${r.value.toLocaleString("id-ID")} lx
+            </span>
+          </td>
+          <td class="py-2.5 px-3 whitespace-nowrap">
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${cond.badgeClass}">${cond.label}</span>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    document.getElementById("recordCountText").textContent = `Menampilkan ${filtered.length > 0 ? startIdx + 1 : 0} - ${Math.min(currentPage * itemsPerPage, filtered.length)} dari ${filtered.length} catatan telemetri`;
+
+    const pagContainer = document.getElementById("paginationControls");
+    pagContainer.innerHTML = "";
+    const prevBtn = document.createElement("button");
+    prevBtn.className = "px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer text-slate-300 hover:text-white";
+    prevBtn.textContent = "←";
+    prevBtn.disabled = currentPage === 1;
+    prevBtn.onclick = () => { currentPage--; renderTable(); };
+    pagContainer.appendChild(prevBtn);
+
+    for (let p = 1; p <= totalPages; p++) {
+      if (p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1) {
+        const btn = document.createElement("button");
+        btn.className = `px-2.5 py-1 rounded text-xs transition cursor-pointer ${p === currentPage ? 'bg-cyan-950 text-cyan-400 border border-cyan-500/40 font-bold' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'}`;
+        btn.textContent = p;
+        btn.onclick = () => { currentPage = p; renderTable(); };
+        pagContainer.appendChild(btn);
+      }
+    }
+
+    const nextBtn = document.createElement("button");
+    nextBtn.className = "px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer text-slate-300 hover:text-white";
+    nextBtn.textContent = "→";
+    nextBtn.disabled = currentPage === totalPages;
+    nextBtn.onclick = () => { currentPage++; renderTable(); };
+    pagContainer.appendChild(nextBtn);
+  }
+
+  function renderChart() {
+    const ctx = document.getElementById("luxHistoryChart").getContext("2d");
+    if (!ctx) return;
+
+    const now = telemetryRecords[0]?.timestamp || Date.now();
+    let cutoff = 0;
+    if (activeTimeframe === "1h") cutoff = now - 3600000;
+    else if (activeTimeframe === "6h") cutoff = now - 6 * 3600000;
+    else if (activeTimeframe === "24h") cutoff = now - 24 * 3600000;
+    else if (activeTimeframe === "7d") cutoff = now - 7 * 24 * 3600000;
+
+    let chartData = telemetryRecords.filter(r => r.timestamp >= cutoff);
+    if (chartData.length === 0) chartData = telemetryRecords;
+    const chronological = [...chartData].reverse();
+
+    const labels = chronological.map(r => r.formattedTime);
+    const dataPoints = chronological.map(r => r.value);
+    const glareThreshold = new Array(dataPoints.length).fill(750);
+    const comfortThreshold = new Array(dataPoints.length).fill(500);
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, 350);
+    gradient.addColorStop(0, "rgba(245, 158, 11, 0.45)");
+    gradient.addColorStop(0.5, "rgba(245, 158, 11, 0.15)");
+    gradient.addColorStop(1, "rgba(245, 158, 11, 0.0)");
+
+    if (chartInstance) {
+      chartInstance.destroy();
+    }
+
+    const maxVal = Math.max(...dataPoints, 800);
+    const yMax = Math.ceil((maxVal * 1.2) / 100) * 100;
+
+    chartInstance = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: "Intensitas Cahaya (Lux)",
+            data: dataPoints,
+            borderColor: "#f59e0b",
+            borderWidth: 2.5,
+            backgroundColor: gradient,
+            fill: true,
+            tension: 0.35,
+            pointBackgroundColor: "#fbbf24",
+            pointBorderColor: "#070b12",
+            pointBorderWidth: 2,
+            pointRadius: dataPoints.length > 25 ? 2 : 4,
+            pointHoverRadius: 7
+          },
+          {
+            label: "Ambang Batas Terlalu Terang (750 lx)",
+            data: glareThreshold,
+            borderColor: "rgba(244, 63, 94, 0.65)",
+            borderWidth: 1.5,
+            borderDash: [5, 5],
+            fill: false,
+            pointRadius: 0
+          },
+          {
+            label: "Batas Atas Standar Nyaman (500 lx)",
+            data: comfortThreshold,
+            borderColor: "rgba(16, 185, 129, 0.65)",
+            borderWidth: 1.5,
+            borderDash: [4, 4],
+            fill: false,
+            pointRadius: 0
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 350 },
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: "#0c1322",
+            titleColor: "#06b6d4",
+            bodyColor: "#f8fafc",
+            borderColor: "#334155",
+            borderWidth: 1,
+            padding: 10,
+            callbacks: {
+              label: function(c) { return ` ${c.dataset.label}: ${c.parsed.y} lx`; }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: "rgba(255, 255, 255, 0.05)" },
+            ticks: { color: "#64748b", font: { family: "JetBrains Mono", size: 10 }, maxTicksLimit: 10 }
+          },
+          y: {
+            min: 0,
+            max: yMax,
+            grid: { color: "rgba(255, 255, 255, 0.05)" },
+            ticks: {
+              color: "#64748b",
+              font: { family: "JetBrains Mono", size: 11 },
+              callback: function(v) { return v + " lx"; }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  function updateAllUI(connected) {
+    const badge = document.getElementById("connectionBadge");
+    const badgeDot = document.getElementById("badgePulseDot");
+    const badgeText = document.getElementById("badgeStatusText");
+    const footerStatus = document.getElementById("footerStreamStatus");
+    const footerDot = document.getElementById("footerPulseDot");
+
+    if (connected) {
+      badge.className = "text-[10px] px-2 py-0.5 rounded font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-semibold flex items-center gap-1";
+      badgeDot.className = "w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse";
+      badgeText.textContent = "ONLINE";
+      footerStatus.textContent = "TERHUBUNG";
+      footerStatus.className = "text-emerald-400 font-semibold";
+      footerDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
+    } else {
+      badge.className = "text-[10px] px-2 py-0.5 rounded font-mono bg-rose-500/20 text-rose-400 border border-rose-500/40 font-semibold flex items-center gap-1";
+      badgeDot.className = "w-1.5 h-1.5 rounded-full bg-rose-400";
+      badgeText.textContent = "OFFLINE";
+      footerStatus.textContent = "TERPUTUS";
+      footerStatus.className = "text-rose-400 font-semibold";
+      footerDot.className = "w-2 h-2 rounded-full bg-rose-500";
+    }
+
+    if (telemetryRecords.length > 0) {
+      renderHeroBanner(telemetryRecords);
+      renderChart();
+      renderTable();
+    }
+  }
+
+  async function fetchTelemetryData() {
+    try {
+      const url = `https://${FIREBASE_CONFIG.host}/${FIREBASE_CONFIG.path}.json?auth=${FIREBASE_CONFIG.auth}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && typeof data === "object") {
+          activeDataMap = data;
+          telemetryRecords = parseFirebaseData(data);
+          updateAllUI(true);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("[Firebase] Fetch status:", e);
+    }
+  }
+
+  function startRealtimeStream() {
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+
+    try {
+      const sseUrl = `https://${FIREBASE_CONFIG.host}/${FIREBASE_CONFIG.path}.json?auth=${FIREBASE_CONFIG.auth}`;
+      eventSource = new EventSource(sseUrl);
+
+      eventSource.addEventListener("put", (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload && payload.path === "/") {
+            activeDataMap = payload.data || {};
+          } else if (payload && payload.path) {
+            const itemKey = payload.path.replace(/^\//, "");
+            if (itemKey) activeDataMap[itemKey] = payload.data;
+          }
+          telemetryRecords = parseFirebaseData(activeDataMap);
+          updateAllUI(true);
+        } catch (err) {
+          console.error("SSE parse error", err);
+        }
+      });
+
+      eventSource.addEventListener("patch", (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload && payload.data) {
+            Object.assign(activeDataMap, payload.data);
+            telemetryRecords = parseFirebaseData(activeDataMap);
+            updateAllUI(true);
+          }
+        } catch (err) {
+          console.error("SSE patch error", err);
+        }
+      });
+
+      eventSource.onerror = () => {
+        console.warn("[Firebase SSE] Stream terputus, mengaktifkan polling otomatis...");
+        updateAllUI(false);
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        startPolling();
+      };
+    } catch (err) {
+      console.warn("[Firebase SSE] Gagal inisialisasi, mengaktifkan polling fallback...", err);
+      startPolling();
+    }
+  }
+
+  function startPolling() {
+    if (pollInterval) return;
+    pollInterval = setInterval(fetchTelemetryData, 3000);
+  }
+
+  // Data Awal Seed (Terbaru sesuai tabel Firebase RTDB dan Screenshot Pengguna)
+  telemetryRecords = [
+    { id: "-P64cdAf-REbQoqxi3sP", value: 902, condition: "Terang (Terlalu Terang)", timestamp: 1794317128427, formattedTime: "20:25:28", formattedDate: "2026-11-10" },
+    { id: "-P4zCo0gdEA1gV-s3lUZ", value: 221, condition: "IDEAL (Cahaya Sesuai Standar SNI)", timestamp: 1793135689836, formattedTime: "14:43:18", formattedDate: "2026-10-18" },
+    { id: "-P4zAAMBQ0e0HA94WTx6", value: 992, condition: "BERLEBIHAN (Terlalu Terang)", timestamp: 1793135660000, formattedTime: "14:43:00", formattedDate: "2026-10-18" },
+    { id: "-P4zA9M9Q3e8HA91WEp2", value: 940, condition: "BERLEBIHAN (Terlalu Terang)", timestamp: 1793135630000, formattedTime: "14:42:30", formattedDate: "2026-10-18" },
+    { id: "-P4zA7z2P7a1HA88QKa1", value: 710, condition: "CUKUP TERANG", timestamp: 1793135600000, formattedTime: "14:42:00", formattedDate: "2026-10-18" },
+    { id: "-P4zA5k6D1b2HB67LMq9", value: 480, condition: "IDEAL (Normal)", timestamp: 1793135570000, formattedTime: "14:41:30", formattedDate: "2026-10-18" },
+    { id: "-P4zA3j8F9c3HB42NPs4", value: 350, condition: "IDEAL (Normal)", timestamp: 1793135540000, formattedTime: "14:41:00", formattedDate: "2026-10-18" },
+    { id: "-P4zA1h4K5e4HB10KLr7", value: 240, condition: "IDEAL (Normal)", timestamp: 1793135510000, formattedTime: "14:40:30", formattedDate: "2026-10-18" },
+    { id: "-P4z9zg1N8g5HA98JJq3", value: 120, condition: "REDUP (Kurang Terang)", timestamp: 1793135480000, formattedTime: "14:40:00", formattedDate: "2026-10-18" }
+  ];
+
+  document.addEventListener("DOMContentLoaded", () => {
+    updateAllUI(true);
+    fetchTelemetryData();
+    startRealtimeStream();
+
+    try {
+      if (typeof firebase !== "undefined") {
+        const app = firebase.initializeApp({
+          databaseURL: FIREBASE_CONFIG.databaseURL
+        });
+        const db = firebase.database();
+        const ref = db.ref(FIREBASE_CONFIG.path);
+        ref.limitToLast(50).on("value", (snapshot) => {
+          const val = snapshot.val();
+          if (val) {
+            activeDataMap = val;
+            telemetryRecords = parseFirebaseData(val);
+            updateAllUI(true);
+          }
+        });
+      }
+    } catch (err) {
+      console.log("[Firebase SDK Compat] Menggunakan SSE Stream native.");
+    }
+
+    document.getElementById("refreshBtn").addEventListener("click", () => {
+      fetchTelemetryData();
+    });
+
+    const toggleBtn = document.getElementById("liveStreamToggle");
+    const indicatorDot = document.getElementById("streamIndicatorDot");
+    const statusText = document.getElementById("streamStatusText");
+
+    toggleBtn.addEventListener("click", () => {
+      isLiveSync = !isLiveSync;
+      if (isLiveSync) {
+        toggleBtn.className = "flex items-center gap-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 px-3 py-1.5 rounded-md border border-cyan-500/30 transition-all font-semibold cursor-pointer shadow-[0_0_12px_rgba(6,182,212,0.15)]";
+        indicatorDot.className = "w-2 h-2 rounded-full bg-cyan-400 animate-pulse";
+        statusText.textContent = "LIVE SYNC: AKTIF";
+        startRealtimeStream();
+      } else {
+        toggleBtn.className = "flex items-center gap-2 bg-slate-800 text-slate-400 border border-slate-700 px-3 py-1.5 rounded-md transition-all font-semibold cursor-pointer hover:bg-slate-700";
+        indicatorDot.className = "w-2 h-2 rounded-full bg-slate-500";
+        statusText.textContent = "LIVE SYNC: DIJEDA";
+        if (eventSource) eventSource.close();
+        if (pollInterval) clearInterval(pollInterval);
+      }
+    });
+
+    document.querySelectorAll(".timeframe-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        document.querySelectorAll(".timeframe-btn").forEach(b => {
+          b.className = "timeframe-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition cursor-pointer";
+        });
+        e.target.className = "timeframe-btn px-2.5 py-1 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold cursor-pointer";
+        activeTimeframe = e.target.getAttribute("data-range");
+        renderChart();
+      });
+    });
+
+    document.querySelectorAll(".range-pill").forEach(pill => {
+      pill.addEventListener("click", (e) => {
+        document.querySelectorAll(".range-pill").forEach(p => {
+          p.className = "range-pill px-2.5 py-1 rounded text-[11px] bg-slate-900 text-slate-400 hover:text-white border border-slate-800 transition whitespace-nowrap cursor-pointer";
+        });
+        e.target.className = "range-pill px-2.5 py-1 rounded text-[11px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold transition hover:bg-cyan-500/30 whitespace-nowrap cursor-pointer";
+        activeQuickRange = e.target.getAttribute("data-range");
+        currentPage = 1;
+        renderTable();
+      });
+    });
+
+    document.getElementById("tableSearchInput").addEventListener("input", () => {
+      currentPage = 1;
+      renderTable();
+    });
+    document.getElementById("dateFromInput").addEventListener("change", () => {
+      currentPage = 1;
+      renderTable();
+    });
+    document.getElementById("dateToInput").addEventListener("change", () => {
+      currentPage = 1;
+      renderTable();
+    });
+
+    document.getElementById("exportCsvBtn").addEventListener("click", () => {
+      if (telemetryRecords.length === 0) {
+        alert("Tidak ada data telemetri untuk diekspor.");
+        return;
+      }
+      const headers = ["Waktu (WIB)", "Tanggal", "Firebase Node Key", "Nilai Lux (lx)", "Kondisi Ambien", "Timestamp (ms)"];
+      const rows = telemetryRecords.map(r => [
+        `"${r.formattedTime}"`,
+        `"${r.formattedDate}"`,
+        `"${r.id}"`,
+        r.value,
+        `"${r.condition.replace(/"/g, '""')}"`,
+        r.timestamp
+      ]);
+      const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `telemetri_lux_${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
+
+    window.addEventListener("resize", () => {
+      if (chartInstance) chartInstance.resize();
+    });
+  });
+</script>
+</body>
+</html>
+
